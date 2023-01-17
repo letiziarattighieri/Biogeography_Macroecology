@@ -564,6 +564,191 @@ str(sam)
 env <- forest$env
 
 
+#####################################################
+
+# 17/01 Lezione con Arianna ed Elisa
+# Partiamo dal 4^ script
+
+# Curve specie-area e Dark Diveristy
+# Pool di specie: set di specie, gruppo di specie. tutte le specie presenti o che potrebbero esserlo in una regione a determinate caratteristiche. 
+# Pool globale, pool regionale, pool locale, pool osservato.
+# Pool osservato: comprende le specie effettivamente presenti
+# Dal passaggio a pool locale a osservato c'è filtraggio biotico o abiotico. 
+# DARK DIVERSITY: in campo non raccoglierò mai il numero completo di specie del luogo o perchè è rara o fenologicamente è troppo presto quindi in quel momento non la vedo
+# Insieme di tutte le specie che potrebbero essere presenti ma non lo sono. 
+# Osservato vs Dark, dimensioni variano in base a quante specie osservo rispetto a quelle che non trovo.
+# Potenzialità di una specie si basa sulla co-occurence. Es. sp A e sp B. Ogni volta che trovo spA trovo anche la spB, sono due specie che se c'è una c'è anche l'altra
+# Associazioni tra specie.
+# Se faccio plot e vedo solo spA e non spB, la spB finisce nella dark perchè dovrebbe esserci ma non c'è.
+# Con la Dark si calcola l'indice di completezza: quanto è saturo l'ambiente con le specie che dovrebbero essere presenti. Senza metriche, è un numero e posso calcolarlo dappertutto
+# Quindi posso paragonare diverse zone. Es. paragone tra parchi in base al risultato di questo indice. 
+
+install.packages(c("vegan", "DarkDiv"))
+
+library(DarkDiv)
+library(vegan)
+
+dat <- read.csv("C:/Users/Letizia Rattighieri/OneDrive/Desktop/script/data_biomac_2.csv")
+dim(dat)
+dat[1:5, 1:10] # dati ambientali e poi iniziano dati di copertura delle specie
+
+# tolgo le colonne con le variabili ambientali perchè devo lavorare solo con le specie
+comm <- dat[, 6:ncol(dat)]
+
+### DarkDiv package
+?DarkDiv
+# Funzione che serve per stimare la dark in base alla co-occorrenza delle specie, ci sono diversi metodi
+dark_comm <- DarkDiv(comm, method = "RawBeals") # nel pacchetto vegan c'è la funzione beals che mi fa la stessa cosa
+dark_comm_vegan <- vegan::beals(comm) # i :: servono per estrarre la funzione dal pacchetto per evitare di scegliere una funzione uguale ma di un altro pacchetto
+str(dark_comm)
+str(dark_comm_vegan)
+# Riprendi cosa vogliono dire i valori
+
+dark_comm$AllProbs[1:5, 1:5]
+dark_comm_vegan[1:5, 1:5]
+
+max(dark_comm$AllProbs)
+min(dark_comm$AllProbs)
+mean(dark_comm$AllProbs)
+median(dark_comm$AllProbs)
+# Poche specie che hanno probabilità di essere presenti alta, ci sono molte specie che raramente appaiono (in base ai valori della media)
+# very few species have an high probability of occurrence
+# because few species occur frequently, and many species 
+# occur rarely
+
+quantile(dark_comm$AllProbs) 
+
+### Dark Diversity s.s. 10.1111/geb.13203
+rowSums(dark_comm$Dark) # NAs (i.e. missing values) should be accounted for when summing or doing other operations
+dd <- rowSums(dark_comm$Dark, na.rm = T) # "na.rm = T" argument enables us to sum values by removing NAs
+dd # our dark diversity vector (1 value per site/plot -> 19 values)
+hist(dd,
+     main = "Histogram of probabilistic dark diversity")
+summary(dd)
+
+# habitat 2 ha più specie assenti che quelle presenti
+boxplot(dd[1:10], dd[11:19]) # here we graphically compare dark diversity values between the first ten plots and last 9 plots
+
+boxplot(dd[dat$Management == "F"], dd[dat$Management == "C"]) # here we do the same based on management
+
+# non è significativo perchè sono sulla stessa linea praticamente
+t.test(dd[dat$Management == "F"], dd[dat$Management == "C"]) # here we use a test to check for differences between the two groups
+
+### Community completeness (indice di completezza) -> ln(observed richness/dark diversity) (see 10.1007/s12224-013-9169-x)
+sr <- specnumber(comm)
+cc <- log(sr/dd)
+cc # i valori negativi sono da indagare perchè non c'è assenza negativa, bisogna indagare il range quindi potrebbe essere plausibile
+# valori negativi è dark maggiore
+hist(cc)
+summary(cc)
+
+boxplot(cc[dat$Management == "F"], cc[dat$Management == "C"]) # in base alla gestione l'habitat 1 è più completo del 2
+t.test(cc[dat$Management == "F"], cc[dat$Management == "C"]) # significativo 
+
+
+### Range filling -> realized/potential range size 10.1111/j.1461-0248.2004.00614.x
+sf <- specnumber(comm, MARGIN = 2) # species frequencies -> realized range size. margine 2 trova la frequenza di specie. nome della specie quante volte appare nel plot
+pr <- colSums(dark_comm$Pool) # potential range 
+rf <- sf/pr # frequenza/potenzialità
+rf # la probabilità di trovare le specie, es. abies alba 50% posso trovarlo nel plot
+head(sort(rf, decreasing = T), 20)
+head(sort(rf), 20)
+
+
+
+
+###################################à
+
+# Script 5
+# Curve specie-area. 1859 da Watson. Come le specie sono in proporzione all'area che analizziamo. 
+# A partire da area continentale o a partire da isole.
+# Power è il modo più usato per calcolare la relazione. cA^z. densità (c), area (A) e isolamento area (z)
+# statistica che segue andamento parametrico (non normale) o normale. Rispetta o meno la curva gaussiana
+
+# riga 15: ci sono situazioni in cui aumenta l'area ma non aumentano le specie. Es. campiono area che non conosco: si parte dal centro e si inizia a scrivere tutte le specie che osservo e si va a spirale aumentando sempre l'area
+# in base all'ambiente arriva al plateau, se aumento ancora di più trovo di più ma questo perchè aumento l'area e aumentano i parametri
+install.packages("sars")
+
+library(sars)
+
+data(galap) 
+dim(galap)
+head(galap)
+?galap
+
+arr_galap <- sar_power(data = galap, 
+                       normaTest ="lillie", # test usato per vedere se i residui del modello sono normali. 
+                       homoTest = "cor.fitted") # test che controlla se i residui sono normali o meno
+?sar_power
+summary(arr_galap)
+plot(arr_galap) # ci sono situazioni in cui aumenta l'area ma non aumentano le specie. curva di rarefazione
+arr_galap$normaTest # p-value è 0.05, siamo al limite, al di sotto si accetta quello che trovo. in questo caso non è normale il mio dato. 
+
+# non è normale quindi cambio il modello:
+gle_galap <- sar_loga(data = galap, normaTest ="lillie", homoTest = "cor.fitted")
+summary(gle_galap)
+
+plot(gle_galap)
+gle_galap$normaTest # non è normale
+display_sars_models()
+sars_models() # vedo quali sono i modelli che posso usare
+
+multi_galap <- sar_multi(data = galap, obj = c("power", "loga", "koba")) #curva facendo più modelli
+summary(multi_galap$power)
+summary(multi_galap$loga)
+summary(multi_galap$koba)
+# R squared mi dice quanto spiega il mio modello in %
+plot(multi_galap)
+
+
+sar_pred(arr_galap, area = 1000) # in base all'area che do, dopo aver fatto il modello gli dico di quanto è l'area e gli chiedo di stimare la relazione
+
+# gdm sono modelli: modello SAR da usare per controllare i diversi modelli tra di loro
+galap$t <- c(4, 1, 13, 16, 15, 2, 6, 4, 5, 11, 3, 9, 8, 10, 12, 7)
+gdm(galap, model = "ATT2", mod_sel = TRUE)
+gdm(galap, model = "all", mod_sel = TRUE)
+# cambio il modello o posso farlo su tutti i modelli
+
+?gdm
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
